@@ -6,8 +6,8 @@ class DynamicMTML_pack extends MTPlugin {
         'id'   => 'DynamicMTML',
         'key'  => 'dynamicmtml',
         'author_name' => 'Alfasado Inc.',
-        'author_link' => 'http://alfasado.net/',
-        'version' => '2.05',
+        'author_link' => 'https://alfasado.net/',
+        'version' => '3.0',
         'description' => 'DynamicMTML is PHP extension for Movable Type.',
         'config_settings' => array( // mt-config.cgi
             'DynamicForceCompile' => array( 'default' => 0 ),
@@ -36,7 +36,6 @@ class DynamicMTML_pack extends MTPlugin {
             'DynamicWorkerExpiration' => array( 'default' => 300 ),
             'DynamicInitPluginsLater' => array( 'default' => 0 ),
             'PHPPearDir' => array( 'default' => '' ),
-            'DynamicMTMLLicense' => array( 'default' => 'Commercial' ),
             'SmartphonePreviewAgent'
                 => array( 'default' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 5_1 like Mac OS X)' ),
         ),
@@ -71,6 +70,25 @@ class DynamicMTML_pack extends MTPlugin {
                                  'buildcache' => 'buildcache',
                                  'varsrecurse' => 'varsrecurse',
                                  'json2mtml' => 'json2mtml',
+                                 'sethashvars' => 'sethashvars',
+                                 'unsetstash' => 'unsetstash',
+                                 'unsetvars' => 'unsetvars',
+                                 'localvars' => 'localvars',
+                                 'yaml2vars' => 'yaml2vars',
+                                 'loopwithsort' => 'loopwithsort',
+                                 'ifkeyexists' => 'ifkeyexists',
+                                 'ifvarexists' => 'ifvalueexists',
+                                 'ifvalueexists' => 'ifvalueexists',
+                                 'ifinarray' => 'ifinarray',
+                                 'ifnotinarray' => 'ifnotinarray',
+                                 'ifisinarray' => 'ifisinarray',
+                                 'ifvarisscalar' => 'ifvarisscalar',
+                                 'ifvarisarray' => 'ifvarisarray',
+                                 'ifvarishash' => 'ifvarishash',
+                                 'mbif' => 'mbif',
+                                 'mbunless' => 'mbunless',
+                                 'mbelseif' => 'mbif',
+                                 'mbelse' => 'mbif',
                                  ),
             'function' => array( 'authorlanguage' => 'authorlanguage',
                                  'useragent' => 'useragent',
@@ -99,11 +117,49 @@ class DynamicMTML_pack extends MTPlugin {
                                  'tablecolumnvalue' => 'tablecolumnvalue',
                                  'dataapiproxy' => 'dataapiproxy',
                                  'error' => 'error',
+                                 'gethashvar' => 'gethashvar',
+                                 'gethashkey' => 'gethashkey',
+                                 'getarrayvar' => 'getarrayvar',
+                                 'getarrayjoin' => 'getarrayjoin',
+                                 'getarrayrand' => 'getarrayrand',
+                                 'getvardump' => 'getvardump',
+                                 'splitvar' => 'splitvar',
+                                 'deletevars' => 'deletevars',
+                                 'savevars' => 'savevars',
+                                 'resetvars' => 'resetvars',
+                                 'restorevars' => 'restorevars',
+                                 'savestash' => 'savestash',
+                                 'resetstash' => 'resetstash',
+                                 'restorestash' => 'restorestash',
+                                 'arraysearch' => 'arraysearch',
+                                 'arraysort' => 'arraysort',
+                                 'arrayshuffle' => 'arrayshuffle',
+                                 'arrayreverse' => 'arrayreverse',
+                                 'arrayunique' => 'arrayunique',
+                                 'appendvar' => 'appendvar',
+                                 'stash2vars' => 'stash2vars',
+                                 'substrvar' => 'substrvar',
+                                 'arraymerge' => 'arraymerge',
+                                 'mergearray' => 'mergearray',
+                                 'mergehash' => 'mergehash',
+                                 'setpublishedentryids' => 'setpublishedentryids',
+                                 'setpublishedpageids' => 'setpublishedpageids',
+                                 'usleep' => 'usleep',
+                                 'mbsetvar' => 'mbsetvar',
+                                 'mbvar' => 'mbvar',
+                                 'mbgetvar' => 'mbgetvar',
                                  ),
             'modifier' => array( 'trimwhitespace' => 'trimwhitespace',
                                  'highlightingsearchword' => 'highlightingsearchword',
                                  'make_seo_basename' => 'make_seo_basename',
-                                 'intval' => 'intval' ),
+                                 'intval' => 'intval',
+                                 'json2vars' => 'json2vars',
+                                 'vars2json' => 'vars2json',
+                                 'mtignore' => 'mtignore',
+                                 'note' => 'note',
+                                 'ts_format' => 'ts_format',
+                                 'db2ts' => 'db2ts',
+                                 ),
         ),
         'tasks' => array( // Tasks
             'FuturePost' => array( 'label' => 'Publish Scheduled Entries',
@@ -132,8 +188,16 @@ class DynamicMTML_pack extends MTPlugin {
         return dirname( __FILE__ ) . DIRECTORY_SEPARATOR . 'tags' . DIRECTORY_SEPARATOR;
     }
 
+    function extlib_dir () {
+        return dirname( __FILE__ ) . DIRECTORY_SEPARATOR . 'extlib' . DIRECTORY_SEPARATOR;
+    }
+
     // Callbacks
     function configure_from_db ( &$mt, $ctx, $args, $cfg ) {
+        $app = $ctx->stash( 'bootstrapper' );
+        if ( $app->stash( 'no_database' ) ) {
+            return FALSE;
+        }
         // $cfg =& $mt->config;
         if ( isset( $cfg[ 'dynamiccontent2gzip' ] ) ){
             ini_set( 'zlib.output_compression', 'On' );
@@ -361,9 +425,10 @@ class DynamicMTML_pack extends MTPlugin {
                             if ( $output != NULL ) {
                                 if ( $app->content_is_updated( $file_path, $output ) ) {
                                     $app->put_data( $output, $file_path );
+                                    $mt = $app->mt();
+                                    $ctx = $app->ctx();
                                     $args = $app->get_args();
-                                    $app->run_callbacks( 'rebuild_file', $app->mt(), $app->ctx(),
-                                                                                     $args, $output );
+                                    $app->run_callbacks( 'rebuild_file', $mt, $ctx, $args, $output );
                                     $do = 1;
                                     $files ++;
                                 }
@@ -513,6 +578,97 @@ class DynamicMTML_pack extends MTPlugin {
         return smarty_block_mtjson2mtml( $args, $content, $ctx, $repeat );
     }
 
+    function sethashvars ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtsethashvars.php' );
+        return smarty_block_mtsethashvars( $args, $content, $ctx, $repeat );
+    }
+
+    function unsetstash( $args, $content, $ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtunsetstash.php' );
+        return smarty_block_mtunsetstash( $args, $content, $ctx, $repeat );
+    }
+
+    function unsetvars( $args, $content, $ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtunsetvars.php' );
+        return smarty_block_mtunsetvars( $args, $content, $ctx, $repeat );
+    }
+
+    function localvars( $args, $content, $ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtlocalvars.php' );
+        return smarty_block_mtlocalvars( $args, $content, $ctx, $repeat );
+    }
+
+    function yaml2vars( $args, $content, &$ctx, &$repeat ) {
+        $spyc = $this->extlib_dir() . DIRECTORY_SEPARATOR . 'spyc' . DIRECTORY_SEPARATOR . 'spyc.php';
+        require_once( $spyc );
+        require_once( $this->tags_dir() . 'block.mtyaml2vars.php' );
+        return smarty_block_mtyaml2vars( $args, $content, $ctx, $repeat );
+    }
+
+    function loopwithsort ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtloopwithsort.php' );
+        return smarty_block_mtloopwithsort( $args, $content, $ctx, $repeat );
+    }
+
+    function ifkeyexists ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifkeyexists.php' );
+        return smarty_block_mtifkeyexists( $args, $content, $ctx, $repeat );
+    }
+
+    function ifvarexists ( $args, $content, &$ctx, &$repeat ) {
+        return $this->ifvalueexists( $args, $content, $ctx, $repeat );
+    }
+
+    function ifvalueexists ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifvalueexists.php' );
+        return smarty_block_mtifvalueexists( $args, $content, $ctx, $repeat );
+    }
+
+    function ifinarray ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifinarray.php' );
+        return smarty_block_mtifinarray( $args, $content, $ctx, $repeat );
+    }
+
+    function ifnotinarray ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifnotinarray.php' );
+        return smarty_block_mtifnotinarray( $args, $content, $ctx, $repeat );
+    }
+
+    function ifisinarray ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifisinarray.php' );
+        return smarty_block_mtifisinarray( $args, $content, $ctx, $repeat );
+    }
+
+    function ifvarisscalar ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifvarisscalar.php' );
+        return smarty_block_mtifvarisscalar( $args, $content, $ctx, $repeat );
+    }
+
+    function ifvarisarray ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifvarisarray.php' );
+        return smarty_block_mtifvarisarray( $args, $content, $ctx, $repeat );
+    }
+
+    function ifvarishash ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtifvarishash.php' );
+        return smarty_block_mtifvarishash( $args, $content, $ctx, $repeat );
+    }
+
+    function mbif ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtmbif.php' );
+        return smarty_block_mtmbif( $args, $content, $ctx, $repeat );
+    }
+
+    function mbunless ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtmbunless.php' );
+        return smarty_block_mtmbunless( $args, $content, $ctx, $repeat );
+    }
+
+    function mbelseif ( $args, $content, &$ctx, &$repeat ) {
+        require_once( $this->tags_dir() . 'block.mtmbelseif.php' );
+        return smarty_block_mtmbelseif( $args, $content, $ctx, $repeat );
+    }
+
     // Function Tags
     function useragent ( $args, &$ctx ) {
         require_once( $this->tags_dir() . 'function.mtuseragent.php' );
@@ -641,12 +797,164 @@ class DynamicMTML_pack extends MTPlugin {
         return smarty_function_mtblogdynamicdirectoryindex( $args, $ctx );
     }
 
+    function gethashvar ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtgethashvar.php' );
+        return smarty_function_mtgethashvar( $args, $ctx );
+    }
+
+    function gethashkey ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtgethashkey.php' );
+        return smarty_function_mtgethashkey( $args, $ctx );
+    }
+
+    function getarrayvar ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtgetarrayvar.php' );
+        return smarty_function_mtgetarrayvar( $args, $ctx );
+    }
+
+    function getarrayjoin ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtgetarrayjoin.php' );
+        return smarty_function_mtgetarrayjoin( $args, $ctx );
+    }
+
+    function getarrayrand ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtgetarrayrand.php' );
+        return smarty_function_mtgetarrayrand( $args, $ctx );
+    }
+
+    function getvardump ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtgetvardump.php' );
+        return smarty_function_mtgetvardump( $args, $ctx );
+    }
+
+    function splitvar ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtsplitvar.php' );
+        return smarty_function_mtsplitvar( $args, $ctx );
+    }
+
+    function deletevars ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtdeletevars.php' );
+        return smarty_function_mtdeletevars( $args, $ctx );
+    }
+
+    function savevars ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtsavevars.php' );
+        return smarty_function_mtsavevars( $args, $ctx );
+    }
+
+    function resetvars ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtresetvars.php' );
+        return smarty_function_mtresetvars( $args, $ctx );
+    }
+
+    function restorevars ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtrestorevars.php' );
+        return smarty_function_mtrestorevars( $args, $ctx );
+    }
+
+    function savestash ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtsavestash.php' );
+        return smarty_function_mtsavestash( $args, $ctx );
+    }
+
+    function resetstash ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtresetstash.php' );
+        return smarty_function_mtresetstash( $args, $ctx );
+    }
+
+    function restorestash ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtrestorestash.php' );
+        return smarty_function_mtrestorestash( $args, $ctx );
+    }
+
+    function arraysearch ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtarraysearch.php' );
+        return smarty_function_mtarraysearch( $args, $ctx );
+    }
+
+    function arraysort ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtarraysort.php' );
+        return smarty_function_mtarraysort( $args, $ctx );
+    }
+
+    function arrayshuffle ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtarrayshuffle.php' );
+        return smarty_function_mtarrayshuffle( $args, $ctx );
+    }
+
+    function arrayreverse ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtarrayreverse.php' );
+        return smarty_function_mtarrayreverse( $args, $ctx );
+    }
+
+    function arrayunique ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtarrayunique.php' );
+        return smarty_function_mtarrayunique( $args, $ctx );
+    }
+
+    function appendvar ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtappendvar.php' );
+        return smarty_function_mtappendvar( $args, $ctx );
+    }
+
+    function stash2vars ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtstash2vars.php' );
+        return smarty_function_mtstash2vars( $args, $ctx );
+    }
+
+    function substrvar ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtsubstrvar.php' );
+        return smarty_function_mtsubstrvar( $args, $ctx );
+    }
+
+    function arraymerge ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtarraymerge.php' );
+        return smarty_function_mtarraymerge( $args, $ctx );
+    }
+
+    function mergearray ( $args, &$ctx ) {
+        return $this->arraymerge( $args, $ctx );
+    }
+
+    function mergehash ( $args, &$ctx ) {
+        return $this->arraymerge( $args, $ctx );
+    }
+
+    function setpublishedentryids ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtsetpublishedentryids.php' );
+        return smarty_function_mtsetpublishedentryids( $args, $ctx );
+    }
+
+    function setpublishedpageids ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtsetpublishedpageids.php' );
+        return smarty_function_mtsetpublishedpageids( $args, $ctx );
+    }
+
+    function usleep ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtusleep.php' );
+        return smarty_function_mtusleep( $args, $ctx );
+    }
+
+    function mbsetvar ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtmbsetvar.php' );
+        return smarty_function_mtmbsetvar( $args, $ctx );
+    }
+
+    function mbvar ( $args, &$ctx ) {
+        return $this->mbgetvar( $args, $ctx );
+    }
+
+    function mbgetvar ( $args, &$ctx ) {
+        require_once( $this->tags_dir() . 'function.mtmbgetvar.php' );
+        return smarty_function_mtmbgetvar( $args, $ctx );
+    }
+
     // Modifiers
     function trimwhitespace ( $text, $arg ) {
         require_once( $this->tags_dir() . 'modifier.trimwhitespace.php' );
         return smarty_modifier_trimwhitespace( $text, $arg );
     }
-    
+
     function highlightingsearchword ( $text, $arg ) {
         require_once( $this->tags_dir() . 'modifier.highlightingsearchword.php' );
         return smarty_modifier_highlightingsearchword( $text, $arg );
@@ -660,6 +968,41 @@ class DynamicMTML_pack extends MTPlugin {
     function intval ( $text, $arg ) {
         require_once( $this->tags_dir() . 'modifier.intval.php' );
         return smarty_modifier_intval( $text, $arg );
+    }
+
+    function json2vars ( $text, $arg ) {
+        require_once( $this->tags_dir() . 'modifier.json2vars.php' );
+        return smarty_modifier_json2vars( $text, $arg );
+    }
+
+    function vars2json ( $text, $arg ) {
+        require_once( $this->tags_dir() . 'modifier.vars2json.php' );
+        return smarty_modifier_vars2json( $text, $arg );
+    }
+
+    function mtignore ( $text, $arg ) {
+        require_once( $this->tags_dir() . 'modifier.mtignore.php' );
+        return smarty_modifier_mtignore( $text, $arg );
+    }
+
+    function note ( $text, $arg ) {
+        require_once( $this->tags_dir() . 'modifier.note.php' );
+        return smarty_modifier_note( $text, $arg );
+    }
+
+    function ts_format ( $text, $arg ) {
+        require_once( $this->tags_dir() . 'modifier.ts_format.php' );
+        return smarty_modifier_ts_format( $text, $arg );
+    }
+
+    function db2ts ( $text, $arg ) {
+        require_once( $this->tags_dir() . 'modifier.db2ts.php' );
+        return smarty_modifier_db2ts( $text, $arg );
+    }
+
+    function entry_ids ( $text, $arg ) {
+        require_once( $this->tags_dir() . 'modifier.entry_ids.php' );
+        return smarty_modifier_entry_ids( $text, $arg );
     }
 
 }

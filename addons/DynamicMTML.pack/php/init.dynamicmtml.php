@@ -3,6 +3,10 @@
     global $mt;
     global $ctx;
     global $dmtml_exception;
+    if (! isset( $ctx ) ) {
+        $mt = MT::get_instance();
+        $ctx =& $mt->context();
+    }
     // init plugins tags
     if ( isset( $app ) ) {
         $tags_kind = array( 'block', 'function' );
@@ -59,7 +63,7 @@
                                     if ( (! function_exists( "smarty_modifier_{$modifier}" ) ) &&
                                         (! function_exists( "smarty_modifier_{$plugin}_{$modifier}" ) ) ) {
                                         $modifier = "smarty_modifier_{$plugin}_{$modifier}";
-                                        $app->ctx->add_global_filter( $tag, $modifier );
+                                        // $app->ctx->add_global_filter( $tag, $modifier );
                                         $modifier_methods[ $modifier ] = $tag;
                                     }
                                 }
@@ -88,6 +92,12 @@
         if ( $lib && file_exists( $lib ) ) {
             require_once( $lib );
         }
+        if ( $modifier_methods ) {
+            foreach ( $modifier_methods as $meth => $tag ) {
+                $app->ctx->add_global_filter( $tag, $meth );
+            }
+        }
+
         return 1;
     } else {
         // Call from raw php
@@ -105,7 +115,6 @@
     }
     $mt_dir = dirname( $mt_config );
     $blog_id = $mt->blog_id;
-    if (! $blog_id ) return;
     $blog = $mt->db()->fetch_blog( $blog_id );
     $size_limit = 524288;
     $server_cache = $blog->search_cache_expiration;
@@ -141,14 +150,20 @@
     return 1;
 
     function smarty_block_mt_mtml_block ( $args, $content, &$ctx, &$repeat ) {
+        global $mt;
+        $ctx = &$mt->context();
         return smarty_dynamic_tag_dynamicmtml( 'block', $args, $content, $ctx, $repeat );
     }
 
     function smarty_block_mtif_mtml_block ( $args, $content, &$ctx, &$repeat ) {
+        global $mt;
+        $ctx = &$mt->context();
         return smarty_dynamic_tag_dynamicmtml( 'block', $args, $content, $ctx, $repeat );
     }
 
     function smarty_function_mt_mtml_function ( $args, &$ctx ) {
+        global $mt;
+        $ctx = &$mt->context();
         return smarty_dynamic_tag_dynamicmtml( 'function', $args, $ctx );
     }
 

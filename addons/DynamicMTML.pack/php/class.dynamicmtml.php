@@ -101,15 +101,9 @@ class DynamicMTML {
             $ctx->stash( 'blog_id', $blog_id );
             $this->stash( 'blog', $blog );
             $this->stash( 'blog_id', $blog_id );
-            $site_path = $blog->site_path();
-            $self = $site_path;
-            $templates_c = $self . DIRECTORY_SEPARATOR . 'templates_c';
-            $cache = $self . DIRECTORY_SEPARATOR . 'cache';
-        } else {
-            $self = $this->root . dirname( $_SERVER[ 'PHP_SELF' ] );
-            $templates_c = $self . DIRECTORY_SEPARATOR . 'templates_c';
-            $cache = $self . DIRECTORY_SEPARATOR . 'cache';
         }
+        $self = $this->root . dirname( $_SERVER[ 'PHP_SELF' ] );
+        $templates_c = $self . 'templates_c';
         $cache = $self . DIRECTORY_SEPARATOR . 'cache';
         $powercms_files_dir = NULL;
         if (! $powercms_files_dir = $mt->config( 'PowerCMSFilesDir' ) ) {
@@ -545,26 +539,9 @@ class DynamicMTML {
         if ( $param ) {
             $basename .= '_' . md5( $param );
         }
-        $extension = strtolower( pathinfo( $file, PATHINFO_EXTENSION ) );  
+        $extension = strtolower( pathinfo( $file, PATHINFO_EXTENSION ) );
         $cache = $this->cache_dir . DIRECTORY_SEPARATOR . $basename . '.' . $extension;
         return $cache;
-    }
-
-    function get_smarty_template ( &$ctx, $data = NULL, $basename, $filemtime = NULL ) {
-        $template = $ctx->_get_compile_path( 'var:' . $basename );
-        if (! isset( $data ) ) {
-            $blog = $ctx->stash( 'blog' );
-            if (! $this->no_database ) {
-                $ctx->force_compile = TRUE;
-            }
-            $template = dirname( $this->templates_c ) . DIRECTORY_SEPARATOR . $template;
-        }
-        if ( $filemtime && file_exists( $template ) ) {
-            if ( $filemtime > filemtime( $template ) ) {
-                $ctx->force_compile = TRUE;
-            }
-        }
-        return $template;
     }
 
     function init_plugin_dir () {
@@ -1221,13 +1198,16 @@ class DynamicMTML {
             'csv'     => 'text/csv',
             'hdml'    => 'text/x-hdml; charset=Shift_JIS',
             'xml'     => 'application/xml',
-            'rdf'     => 'application/rss+xml',
+            'atom'    => 'application/atom+xml',
+            'rss'     => 'application/rss+xml',
+            'rdf'     => 'application/rdf+xml',
             'xsl'     => 'text/xsl',
             'mpeg'    => 'video/mpeg',
             'mpg'     => 'video/mpeg',
             'mpe'     => 'video/mpeg',
             'avi'     => 'video/x-msvideo',
             'movie'   => 'video/x-sgi-movie',
+            'mov'     => 'video/quicktime',
             'qt'      => 'video/quicktime',
             'ice'     => 'x-conference/x-cooltalk',
             'svr'     => 'x-world/x-svr',
@@ -1272,9 +1252,9 @@ class DynamicMTML {
             'ra'      => 'audio/x-pn-realaudio',
             'ram'     => 'audio/x-pn-realaudio',
             'rm'      => 'audio/x-pn-realaudio',
-            'rpm'     => 'x-pn-realaudio-plugin',
+            'rpm'     => 'audio/x-pn-realaudio-plugin',
             'wav'     => 'audio/x-wav',
-            'bmp'     => 'image/bmp',
+            'bmp'     => 'image/x-ms-bmp',
             'gif'     => 'image/gif',
             'jpeg'    => 'image/jpeg',
             'jpg'     => 'image/jpeg',
@@ -3492,16 +3472,14 @@ class DynamicMTML {
     function build_tmpl ( $ctx, $text, $params = array() ) {
         if ( $params ) {
             if ( isset( $params[ 'fileinfo' ] ) ) $fileinfo = $params[ 'fileinfo' ];
-            if ( isset( $params[ 'basename' ] ) ) $basename = $params[ 'basename' ];
             if ( isset( $params[ 'archive_type' ] ) ) $at = $params[ 'archive_type' ];
             if ( isset( $params[ 'blog' ] ) ) $blog = $params[ 'blog' ];
         }
         require_once( 'MTUtil.php' );
         $mt = $this->mt();
         if ( get_class( $ctx ) === 'stdClass' ) {
-            $ctx = new MTViewer( $this );
+            $ctx = new MTViewer( $mt );
         }
-        $ctx->MTViewer( $mt );
         if (! $blog ) $blog = $ctx->stash( 'blog' );
         if (! $blog ) $blog = $this->blog();
         if (! $at ) $at = 'index';
@@ -3522,12 +3500,6 @@ class DynamicMTML {
                 $mt->configure_paths( $blog->site_path() );
             }
         }
-        if ( $basename ) {
-            $id = 'var:' . $basename;
-        } else {
-            $id = 'var:' . $this->make_magic_token();
-        }
-        // require_once( 'prefilter.mt_to_smarty.php' );
         $plugin_dirs = $ctx->plugins_dir;
         if (! $plugin_dirs ) {
             $this_plugins_dir = $this->stash( 'plugins_dir' );
@@ -3536,40 +3508,15 @@ class DynamicMTML {
             }
             $ctx->plugins_dir = $plugin_dirs;
         }
-        $template = $ctx->_get_compile_path( $id );
-        $template = $this->stash( 'template' );
-        if (! $template ) {
-            $template = $ctx->_get_compile_path( $id );
-            $self = $this->root . dirname( $_SERVER[ 'PHP_SELF' ] );
-            $template = $self . DIRECTORY_SEPARATOR . $template;
-        }
-        if ( file_exists( $template ) ) {
-            if ( ( $ctx->force_compile ) && ( $basename ) ) {
-                unlink ( $template );
-            }
-        }
         $this->stash( 'build_type', 'build_tmpl' );
         $this->stash( 'text', $text );
-        $this->stash( 'template', $template );
-        $this->stash( 'basename', $basename );
         if (! $this->run_callbacks( 'rebuild_file_filter', $mt, $ctx ) ) {
             return NULL;
         }
-        if (! file_exists( $template ) ) {
-            require_once( 'prefilter.mt_to_smarty.php' );
-            $build = smarty_prefilter_mt_to_smarty( $text, $ctx );
-            $build = $ctx->_compile_source( $id, $build, $_compiled_content );
-            $this->write2file( $template, $_compiled_content );
-        }
-        $ctx->force_compile = FALSE;
-        $output = $ctx->fetch( $id );
+        $ctx->force_compile = TRUE;
+        $output = $ctx->fetch( "eval:$text" );
         $args = $this->get_args();
         $this->run_callbacks( 'rebuild_page', $mt, $ctx, $args, $output );
-        if (! $basename ) {
-            if ( file_exists( $template ) ) {
-                unlink( $template );
-            }
-        }
         return $output;
     }
 
@@ -4250,6 +4197,9 @@ class DynamicMTML {
     }
 
     function save ( $obj, $do = 'save' ) {
+        $mt = $this->mt();
+        $ctx = $this->ctx();
+        $args = $this->args;
         $class = get_class( $obj );
         $original = $this->___clone( $class, $obj );
         $res = NULL;

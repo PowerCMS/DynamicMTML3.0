@@ -9,7 +9,7 @@ DynamicMTML は mod\_rewrite を利用してコンテンツへのリクエスト
 ![DynamicMTML 相関図](https://github.com/PowerCMS/DynamicMTML/raw/master/correlation_diagram.png)
 ## 動作環境
 
-+ Movable Type5.04以降
++ Movable Type6.3.3以降
 + PHPによるダイナミックパブリッシングが動作する環境
 + mod\_rewriteが有効で.htaccessによる設定が可能な環境
 

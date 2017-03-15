@@ -402,29 +402,29 @@ sub _cfg_prefs_param {
     my $mtview = MT->config->DynamicSiteBootstrapper || '.mtview.php';
     if ( $app->param( 'no_overwrite_htaccess' ) ) {
         if ( $param->{ error } ) { $param->{ error } .= "<br />"; }
-        $param->{ error } = 
+        $param->{ error } =
                     $component->translate( $component->translate( 'Error: Movable Type cannot overwrite the file <code>[_1]</code>. Please check the file <code>[_1]</code> underneath your blog directory.', '.htaccess' ) );
     }
     if ( $app->param( 'no_overwrite_mtview' ) ) {
         if ( $param->{ error } ) { $param->{ error } .= "<br />"; }
-        $param->{ error } .= 
+        $param->{ error } .=
             $component->translate( $component->translate( 'Error: Movable Type cannot overwrite the file <code>[_1]</code>. Please check the file <code>[_1]</code> underneath your blog directory.', $mtview ) );
     }
     if ( $app->param( 'no_generate_htaccess' ) ) {
         if ( $param->{ error } ) { $param->{ error } .= "<br />"; }
-        $param->{ error } .= 
+        $param->{ error } .=
             $component->translate( $component->translate( 'Error: Movable Type cannot write to the file [_1]. Please check the permissions for the file <code>[_1]</code> underneath your blog directory.', '.htaccess' ) );
     }
     if ( $app->param( 'no_generate_mtview' ) ) {
         if ( $param->{ error } ) { $param->{ error } .= "<br />"; }
-        $param->{ error } .= 
+        $param->{ error } .=
             $component->translate( $component->translate( 'Error: Movable Type cannot write to the file [_1]. Please check the permissions for the file <code>[_1]</code> underneath your blog directory.', $mtview ) );
     }
     if ( $app->param( 'no_search_cache_path' ) ) {
         if ( $param->{ error } ) { $param->{ error } .= "<br />"; }
         require File::Spec;
         my $cache_dir = File::Spec->catdir( powercms_files_dir_path(), 'cache' );
-        $param->{ error } .= 
+        $param->{ error } .=
             $component->translate( $component->translate( 'Error: Movable Type cannot write to the search cache directory.<br />Please check the permissions for the directory called <code>[_1]</code>.', $cache_dir ) );
     }
     $param->{ dynamic_enabled } = 1;
@@ -517,8 +517,7 @@ sub _list_template_source {
                               return_args => $return_args,
                               magic_token => $app->current_magic(), } );
     my $label = $plugin_dynamicmtml->translate( 'Install DynamicMTML' );
-    my $new = '';
-    $new = "<li><a class=\"icon-left icon-related\" href=\"$link\">$label</a><li>" if $app->blog;
+    my $new = $app->blog ? "<li><a class=\"icon-left icon-related\" href=\"$link\">$label</a><li>" : '';
     my $link2 = $app->base . $app->uri(
                     mode => 'flush_dynamic_cache',
                     args => { blog_id => $blog_id,
@@ -580,7 +579,7 @@ sub _footer_source {
     my ( $cb, $app, $tmpl ) = @_;
     my $id = MT->component(__PACKAGE__ =~ /^([^:]+)/)->id;
     $$tmpl =~ s{(<__trans phrase="http://www\.sixapart\.com/movabletype/">)}
-               {<mt:if name="id" eq="$id"><__trans phrase="http://alfasado.net/"><mt:else>$1</mt:if>};
+               {<mt:if name="id" eq="$id"><__trans phrase="https://alfasado.net/"><mt:else>$1</mt:if>};
 }
 
 sub _cb_tp {

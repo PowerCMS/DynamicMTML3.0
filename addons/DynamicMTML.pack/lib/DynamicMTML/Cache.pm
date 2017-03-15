@@ -86,7 +86,11 @@ sub _task_flush_page_cache {
             my $mod = $stat[ 9 ];
             my $te = $now - $mod;
             if ( $te > $ttl ) {
+                if (! MT->run_callbacks( 'pre_flush_page_cache', $child ) ) {
+                    next;
+                }
                 $fmgr->delete( $child );
+                MT->run_callbacks( 'post_flush_page_cache', $child );
             }
         }
     }
