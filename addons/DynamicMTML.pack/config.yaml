@@ -146,6 +146,11 @@ callbacks:
     MT::Category::post_remove: $dynamicmtml::DynamicMTML::Plugin::_cb_post_change
     MT::Folder::post_save: $dynamicmtml::DynamicMTML::Plugin::_cb_post_change
     MT::Folder::post_remove: $dynamicmtml::DynamicMTML::Plugin::_cb_post_change
+upgrade_functions:
+    dynamicmtml_remove_compiled_template_files:
+        version_limit: 1.02
+        plugin: DynamicMTML
+        code: $dynamicmtml::DynamicMTML::Plugin::_remove_compiled_template_files
 tags:
     block:
         RawMTML: $dynamicmtml::DynamicMTML::Tags::_hdlr_raw_mtml

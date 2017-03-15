@@ -644,4 +644,46 @@ sub _clear_dynamic_cache {
     $dynamic_cache_driver->flush_by_key( $update_key );
 }
 
+sub _remove_compiled_template_files {
+#code from MT::Core->remove_compiled_template_files;
+#    my $ttl = MT->config->DynamicCacheTTL;
+#    return '' if !$ttl;
+    require MT::FileMgr;
+    my $fmgr = MT::FileMgr->new('Local');
+
+    my @compile_dirs;
+
+    # Load all website
+    my $iter = MT->model('blog')->load_iter( { class => '*' } );
+    while ( my $blog = $iter->() ) {
+        push @compile_dirs,
+            File::Spec->catdir( $blog->site_path, 'templates_c' );
+    }
+    my ( $deleted_files, $not_deleted_files );
+    foreach my $dir (@compile_dirs) {
+        my $compile_glob = File::Spec->catfile( $dir, "*.php" );
+        my @files = glob($compile_glob);
+        foreach my $file (@files) {
+#            my $mod_time = $fmgr->file_mod_time($file);
+#            if ( $ttl < time - $mod_time ) {
+#                $fmgr->delete($file);
+            if ( $fmgr->delete( $file ) ) {
+                $deleted_files .= $file . "\n";
+            } else {
+                $not_deleted_files .= $file . "\n";
+            }
+#            }
+        }
+    }
+    MT->log( { message => MT->translate( 'Removed the cache file.' ),
+               metadata => $deleted_files,
+               category => 'dynamicmtml',
+    } ) if $deleted_files;
+    MT->log( { message => MT->translate( 'Failed to remove cache file.' ),
+               metadata => $not_deleted_files,
+               category => 'dynamicmtml',
+               level => MT::Log::ERROR(),
+    } ) if $not_deleted_files;
+}
+
 1;
