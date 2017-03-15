@@ -10,7 +10,7 @@ DynamicMTML is the PHP extension framework for Movable Type. By using mod\_rewri
 
 ## System Requirements
 
-+ Movable Type 5.04 or later
++ Movable Type 6.3.3 or later
 + dynamic publishing (PHP 5 or later)
 + mod\_rewrite and .htaccsess
 
