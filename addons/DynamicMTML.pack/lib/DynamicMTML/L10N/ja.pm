@@ -28,6 +28,8 @@ our %Lexicon = (
     'Error: Movable Type cannot write to the search cache directory.<br />Please check the permissions for the directory called <code>[_1]</code>.'
         => 'クエリー付きリクエストのビルド結果をキャッシュするディレクトリを作成できません。<br /><code>[_1]</code>ディレクトリを作成してください。',
     'Removes old page cache.' => 'ページキャッシュの定期クリア',
+    'Removed the cache file.' => 'キャッシュファイルを削除しました。',
+    'Failed to remove cache file.' => 'キャッシュファイルを削除できませんでした。',
     );
 
 1;
