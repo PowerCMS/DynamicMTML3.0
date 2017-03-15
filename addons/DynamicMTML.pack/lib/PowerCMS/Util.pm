@@ -2,7 +2,7 @@ package PowerCMS::Util;
 use strict;
 use base qw/Exporter/;
 
-our $powercms_util_version = '3.3';
+our $powercms_util_version = '4.32';
 our @EXPORT_OK = qw(
     build_tmpl save_asset upload convert_gif_png association_link create_entry
     make_entry write2file read_from_file move_file copy_item remove_item
@@ -33,6 +33,7 @@ our @EXPORT_OK = qw(
     set_powercms_config_values reset_powercms_config_values charset_is_utf8
     can_edit_entry allow_upload error_log encode_mime_header is_valid_extension is_valid_extention get_ole_extension
     is_oracle trimj_to valid_url is_psgi is_fastcgi is_powered_cgi get_superuser
+    md5sum allow_upload_temporary is_data_api session_user get_config_from_file
 );
 
 use File::Spec;
@@ -115,10 +116,11 @@ sub build_tmpl {
 #                  );
 #    my $tmpl = MT::Template->load( { foo => 'bar' } ); # or text
 #    return build_tmpl( $app, $tmpl, \%args, \%params );
+    my $template;
     if ( ( ref $tmpl ) eq 'MT::Template' ) {
+        $template = $tmpl;
         $tmpl = $tmpl->text;
     }
-    $tmpl = $app->translate_templatized( $tmpl );
     require MT::Template;
     require MT::Builder;
     my $ctx = $args->{ ctx };
@@ -147,6 +149,9 @@ sub build_tmpl {
     $ctx->stash( 'category', $category );
     $ctx->stash( 'category_id', $category->id ) if $category;
     $ctx->stash( 'author', $author );
+    if ( $template && ref( $template ) eq 'MT::Template' ) {
+        $ctx->stash( 'template', $template );
+    }
     if ( $start && $end ) {
         if ( ( valid_ts( $start ) ) && ( valid_ts( $end ) ) ) {
             $ctx->{ current_timestamp } = $start;
@@ -183,6 +188,7 @@ sub build_tmpl {
         error_log( $app->translate( "Build error: [_1]", $build->errstr ), $blog ? $blog->id : undef );
         return;
     }
+    $html = $app->translate_templatized( $html );
     if ( MT->version_number >= 5 ) {
         $html = utf8_on( $html );
     }
@@ -198,6 +204,10 @@ sub save_asset {
 #                   parent => $parent_asset->id,
 #                   object => $obj,
 #                   tags => \@tags,
+#                   normalize_orientation => 1,
+#                   change_quality => 1,
+#                   remove_all_metadata => 1,
+#                   remove_gps_metadata => 1,
 #                   );
 #    my $asset = save_asset( $app, $blog, \%params );
     my $blog_id = $blog->id;
@@ -288,6 +298,20 @@ sub save_asset {
             $app->errstr );
     }
     $asset->set_tags( @$tags );
+    if ( $asset->isa( 'MT::Asset::Image' ) ) {
+        if ( $params->{ normalize_orientation } ) {
+            $asset->normalize_orientation();
+        }
+        if ( $params->{ change_quality } ) {
+            $asset->change_quality();
+        }
+        if ( $params->{ remove_all_metadata } ) {
+            $asset->remove_all_metadata();
+        }
+        if ( $params->{ remove_gps_metadata } ) {
+            $asset->remove_gps_metadata();
+        }
+    }
     $asset->save or die $asset->errstr;
     if ( $run_callbacks ) {
         $app->run_callbacks( 'cms_post_save.asset', $app, $asset, $original );
@@ -309,9 +333,14 @@ sub save_asset {
     # my $bytes = $fstats[7];
     if ( $obj ) {
         if ( $obj->id ) {
+            my $obj_blog_id = ref ( $obj ) =~ /^MT::(?:Website|Blog)$/
+                                ? $obj->id
+                                : $obj->has_column( 'blog_id' )
+                                    ? $obj->blog_id
+                                    : 0;
             require MT::ObjectAsset;
             my $object_asset = MT::ObjectAsset->get_by_key( {
-                                                              blog_id => $obj->blog_id,
+                                                              blog_id => $obj_blog_id,
                                                               asset_id => $asset->id,
                                                               object_id => $obj->id,
                                                               object_ds => $obj->datasource,
@@ -449,11 +478,7 @@ sub upload {
             $fmgr->mkpath( $dir ) or return MT->trans_error( "Error making path '[_1]': [_2]",
                                     $out, $fmgr->errstr );
         }
-        my $NoTempFiles = MT->config->NoTempFiles;
-        my $temp = $out;
-        if (! $NoTempFiles ) {
-            $temp = "$out.new";
-        }
+        my $temp  = "$out.new";
         my $umask = $app->config( 'UploadUmask' );
         my $old   = umask( oct $umask );
         open( my $fh, ">$temp" ) or die "Can't open $temp!";
@@ -470,9 +495,7 @@ sub upload {
             print $fh $buffer;
         }
         close( $fh );
-        if (! $NoTempFiles ) {
-            $fmgr->rename( $temp, $out );
-        }
+        $fmgr->rename( $temp, $out );
         umask( $old );
         my $user = $params->{ author };
         $user = current_user( $app ) unless defined $user;
@@ -488,6 +511,7 @@ sub upload {
                                label => ( $label || $file_label ),
                                description => $description,
                                object => $obj,
+                               change_quality => $app->config('AutoChangeImageQuality') ? 1 : 0,
                                );
                 my $asset = save_asset( $app, $blog, \%params, 1 ) or die;
                 if ( $singler ) {
@@ -516,6 +540,7 @@ sub convert_gif_png {
         if ( copy_item( $image, $new_file ) ) {
             require MT::Image;
             my $image = MT::Image->new( Filename => $new_file );
+            return unless $image;
             if ( my $data = $image->convert( Type =>
                                              file_extension( $new_file ) ) ) {
                 write2file( $new_file, $data, 'upload' );
@@ -527,9 +552,10 @@ sub convert_gif_png {
 
 sub association_link {
     my ( $app, $author, $role, $blog ) = @_;
+    my $assoc;
     eval{ # FIXME: new install needs eval?
         require MT::Association;
-        my $assoc = MT::Association->link( $author => $role => $blog );
+        $assoc = MT::Association->link( $author => $role => $blog );
         if ( $assoc ) {
             my $log = MT::Log->new;
             my $msg = { message => $app->translate(
@@ -550,10 +576,9 @@ sub association_link {
             }
             $log->set_values( $msg );
             $log->save or die $log->errstr;
-            return $assoc;
         }
     };
-    return undef;
+    return $assoc;
 }
 
 sub create_entry {
@@ -740,14 +765,11 @@ sub write2file {
         $fmgr->mkpath( $dir ) or return 0; # MT->trans_error( "Error making path '[_1]': [_2]",
                                 # $path, $fmgr->errstr );
     }
-    if ( MT->config->NoTempFiles ) {
-        $fmgr->put_data( $data, $path, $type );
-    } else {
-        $fmgr->put_data( $data, "$path.new", $type );
-        $fmgr->rename( "$path.new", $path );
-    }
-    if ( $fmgr->exists( $path ) ) {
-        return 1;
+    $fmgr->put_data( $data, "$path.new", $type );
+    if ( $fmgr->rename( "$path.new", $path ) ) {
+        if ( $fmgr->exists( $path ) ) {
+            return 1;
+        }
     }
     return 0;
 }
@@ -795,6 +817,7 @@ sub copy_item {
                                 $to, $fmgr->errstr );
     }
     if ( File::Copy::Recursive::rcopy( $from, $to ) ) {
+        MT->run_callbacks( ref( MT->instance() ) . '::post_copy_item', @_ );
         return 1;
     }
     return 0;
@@ -815,6 +838,7 @@ sub remove_item {
     if ( -d $remove ) {
         File::Path::rmtree( [ $remove ] );
         unless ( -d $remove ) {
+            MT->run_callbacks( ref( MT->instance() ) . '::post_remove_item', @_ );
             return 1;
         }
     }
@@ -1205,18 +1229,38 @@ sub send_mail {
 #        ( MT->config->MailReturnPath ? ( 'Return-Path' => MT->config->MailReturnPath ) : () ),
         ( MT->config->MailReplyTo ? ( 'Reply-To' => MT->config->MailReplyTo ) : () ),
     );
-    my $send = sub {
-        require MT::Mail;
-        my $res = MT::Mail->send( \%head, $body );
-        unless ( $res ) {
-            MT->log( MT::Mail->errstr );
-            return 0;
-        }
-    };
-    if ( is_application( $app ) ) {
-        return force_background_task( $send );
+    if ( ( MT->config( 'PowerCMSUseMailQueue' ) ) && (! $params->{ force } ) ) {
+        require MT::Serialize;
+        require MT::TheSchwartz;
+        require TheSchwartz::Job;
+        my $data = { head => \%head, body => $body };
+        my $ser = MT::Serialize->serialize( \$data );
+        my $job = TheSchwartz::Job->new();
+        $job->funcname( 'PowerCMS::Worker::Mail' );
+        require Digest::MD5;
+        my $uniqkey = 'powercms_send_mail:' . Digest::MD5::md5_hex( $ser );
+        $job->uniqkey( $uniqkey );
+        $job->priority( 10 );
+        my $time = time;
+        $job->coalesce( 'powercms_send_mail:' . $$ . ':' . ( $time - ( $time % 10 ) ) );
+        $job->arg( $ser );
+        $job->grabbed_until( 0 );
+        MT::TheSchwartz->insert( $job );
+        return 1;
     } else {
-        return $send->();
+        my $send = sub {
+            require MT::Mail;
+            my $res = MT::Mail->send( \%head, $body );
+            unless ( $res ) {
+                MT->log( MT::Mail->errstr );
+                return 0;
+            }
+        };
+        if ( is_application( $app ) ) {
+            return force_background_task( $send );
+        } else {
+            return $send->();
+        }
     }
 }
 
@@ -1238,9 +1282,10 @@ sub get_mail {
              : $charset eq 'shift_jis' ? 'cp932'
              : $charset;
     my $tempdir = $app->config( 'TempDir' );
+    my $fmgr = MT::FileMgr->new( 'Local' ) or die MT::FileMgr->errstr;
+    $fmgr->mkpath( $tempdir ) unless ( -d $tempdir );
     my @emails;
     for my $id ( sort( keys %$messages ) ) {
-        mkdir( $tempdir, 0755 ) unless ( -d $tempdir );
         my $message = $pop3->get( $id );
         my $parser = new MIME::Parser;
         my $workdir = tempdir( DIR => $tempdir );
@@ -1347,7 +1392,10 @@ sub make_zip_archive {
             if Encode::is_utf8($file);
         my $new = $file;
         $new =~ s/$re//;
-        $archiver->addFile( $file, $new );
+        require File::Spec::Unix;
+        my @parts = File::Spec->splitdir( $new );
+        my $unix_new_path = File::Spec::Unix->catfile( @parts );
+        $archiver->addFile( $file, $unix_new_path );
     }
     return $archiver->writeToFileNamed( $out );
 }
@@ -1529,9 +1577,12 @@ sub csv_new {
 
 sub ftp_new {
     my ( $server, $account, $password, $param ) = @_;
-    eval { require Net::FTP } || return undef;
-    my $ftp = Net::FTP->new( $server, %$param ) or die;
-    my $login = $ftp->login( $account, $password ) or return undef;
+    eval { require Net::FTP };
+    if ( $@ ) {
+        return ( undef, $@ );
+    }
+    my $ftp = Net::FTP->new( $server, %$param ) or return ( undef, 'Cannot initialize Net::FTP' );
+    my $login = $ftp->login( $account, $password ) or return ( undef, 'Cannot login using account: ' . $account );
     return $ftp;
 }
 
@@ -1552,10 +1603,20 @@ sub ftp_put {
     $mode = 'binary' unless $mode;
     $ftp->$mode;
     my $pwd = $ftp->pwd();
-    $ftp->cwd( $cwd ) or return undef;
+    my $res = $ftp->cwd( $cwd );
+    if ( ! $res && $params->{ relative_path } ) {
+        $res = $ftp->cwd( $params->{ relative_path });
+        unless ( $res ) {
+            return undef;
+        }
+    }
     my $ftp_put = $ftp->put( $file );
     if ( $ftp_put ) {
-        $app->run_callbacks( 'post_ftp_put', $app, $ftp, $cwd, $file, $mode, $params );
+        my $result = $app->run_callbacks( 'post_ftp_put', $app, $ftp, $cwd, $file, $mode, $params );
+        unless ( $result ) {
+            $ftp->cwd( $pwd );
+            return undef;
+        }
     }
     $ftp->cwd( $pwd );
     return $ftp_put;
@@ -1598,13 +1659,21 @@ sub uniq_filename {
     my $dir = File::Basename::dirname( $file );
     $file =~ s/%7[Ee]//g;
     my $no_decode = MT->config( 'NoDecodeFilename' );
-    $file = $no_decode ? file_basename($file)
-                       : set_upload_filename($file);
-    $file = File::Spec->catfile($dir, $file);
-    return $file unless ( -f $file );
+    $file = $no_decode ? file_basename( $file )
+                       : set_upload_filename( $file );
+    $file = File::Spec->catfile( $dir, $file );
+    if ( MT->component( 'AssetStatus' ) ) {
+        my $hidden = $file;
+        my $basename = quotemeta( File::Basename::basename( $file ) );
+        $hidden =~ s/($basename$)/.$1/;
+        if ( (! -f $file ) && (! -f $hidden ) ) {
+            return $file;
+        }
+    } else {
+        return $file unless ( -f $file );
+    }
     my $file_extension = file_extension( $file );
-    my $base           = $file;
-#    $base =~ s/(.{1,})\.$file_extension$/$1/;
+    my $base = $file;
     if ( $file_extension ) {
         $base =~ s/(.{1,})\.$file_extension$/$1/;
     }
@@ -1843,6 +1912,7 @@ sub if_ua_Android {
 sub if_user_can {
     my ( $blog, $user, $permission ) = @_;
     return unless $user;
+    return unless $permission;
     unless ( $permission =~ /^can_/ ) {
         $permission = 'can_' . $permission;
     }
@@ -1931,6 +2001,11 @@ sub is_windows     { goto &if_windows }
 sub is_blog        { goto &if_blog }
 sub is_plugin      { goto &if_plugin }
 sub is_writable    { goto &if_writable }
+
+sub is_data_api {
+    my $app = shift || MT->instance();
+    return ref( $app ) eq 'MT::App::DataAPI' ? 1 : 0;
+}
 
 sub file_extension {
     my ( $file, $nolc ) = @_;
@@ -2057,6 +2132,9 @@ sub mime_type {
         'xbm'   => 'image/x-xbitmap',
         'xpm'   => 'image/x-pixmap',
         'xwd'   => 'image/x-xwindowdump',
+        'docx'  => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'pptx'  => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'xlsx'  => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     my $extension = file_extension( $file );
     my $type = $mime_type{ $extension };
@@ -2846,6 +2924,8 @@ sub convert2thumbnail {
                 my %param = ( $scope_tc => $embed, Path => undef, convert_gif_png => $convert_gif_png );
                 my ( $thumb, $w, $h ) = create_thumbnail( $blog, $asset, %param );
                 # my $thumb_new = _convert_gif_png( $thumb );
+                my ( $file, $dir ) = fileparse( $thumb );
+                $thumb = File::Spec->catfile( $dir, MT::Util::encode_url( $file ) );
                 my $url = path2url( $thumb, $blog );
                 $img =~ s/(\ssrc\s*=\s*(["']?))[^"'\s]+\2/$1$url$2/;
                 $img =~ s/(\swidth\s*=\s*(["']?))[^"'\s]*\2/$1$w$2/;
@@ -2859,6 +2939,8 @@ sub convert2thumbnail {
                         my %link_param = ( $scope_tc => $link, Path => undef, convert_gif_png => $convert_gif_png );
                         my ( $link_thumb, $link_w, $link_h ) = create_thumbnail( $blog, $asset, %link_param );
                         # _convert_gif_png( $link_thumb );
+                        my ( $file, $dir ) = fileparse( $link_thumb );
+                        $link_thumb = File::Spec->catfile( $dir, MT::Util::encode_url( $file ) );
                         $link_path = path2url( $link_thumb, $blog );
                     }
                     $img = '<a href="' . $link_path . '">' . $img . '</a>';
@@ -2886,6 +2968,7 @@ sub convert2thumbnail {
 sub create_thumbnail {
     my ( $blog, $asset, %param ) = @_;
     my $app = MT->instance();
+    my $fmgr = MT::FileMgr->new( 'Local' ) or die MT::FileMgr->errstr;
     my ( $thumb, $w, $h );
     my $orig_update = ( stat( $asset->file_path ) )[9];
     $thumb = File::Spec->catfile( $asset->_make_cache_path( $param{ Path } ),
@@ -2894,10 +2977,10 @@ sub create_thumbnail {
     if (-f $thumb ) {
         my $thumb_update = ( stat( $thumb ) )[9];
         if ( $thumb_update < $orig_update ) {
-            unlink $thumb;
+            $fmgr->delete( $thumb );
             $is_new = 1;
             $new_thumb = convert_gif_png( $thumb );
-            unlink $new_thumb if (-f $new_thumb );
+            $fmgr->delete( $new_thumb ) if (-f $new_thumb );
         }
     } else {
         $is_new = 1;
@@ -3091,6 +3174,7 @@ sub powercms_config_param {
     }
     my $count = 0;
     for my $cfg ( @configs ) {
+        next unless $cfg->{ $scope };
         my $nodeset = $tmpl->createElement( 'for' );
         my $component_key = $cfg->{ component };
         my $component = MT->component( $component_key );
@@ -3329,14 +3413,7 @@ sub get_powercms_config {
         }
     }
     my $settings = $params->{ $plugin_key };
-    if (! $settings ) {
-        return get_default( $plugin_key, $key );
-    }
-    my $value = defined( $settings->{ $key } ) ? $settings->{ $key } : '';
-    if ( defined $value && $value eq '' ) {
-        return get_default( $plugin_key, $key );
-    }
-    return $value;
+    return ref $settings eq 'HASH' && defined $settings->{ $key } ? $settings->{ $key } : get_default( $plugin_key, $key );
 }
 
 sub get_default {
@@ -3417,7 +3494,7 @@ sub error_log {
     my $log = MT->model( 'log' )->new;
     $log->message( $message );
     $log->level( MT::Log::ERROR() );
-    $log->blog_id( $blog_id ? ( blog_id => $blog_id ) : () );
+    $log->blog_id( $blog_id ) if $blog_id;
     $log->class( 'system' );
     $log->category( 'powercms' );
     $log->save or die $log->errstr;
@@ -3585,6 +3662,10 @@ sub is_psgi {
 }
 
 sub is_fastcgi {
+    return MT->config->IsFastCGI ? 1 : 0;
+}
+
+sub is_fastcgi_env {
     return $ENV{FAST_CGI} ? 1 : 0;
 }
 
@@ -3606,8 +3687,87 @@ sub get_superuser {
                                                             unique => 1,
                                                           },
                                                         );
-    
+
     return MT->model( 'author' )->load( \%terms, \%args );
+}
+
+sub md5sum {
+    my ( $file ) = @_;
+    return unless $file;
+    my $fmgr = MT::FileMgr->new( 'Local' ) or die MT::FileMgr->errstr;
+    my $ctx = Digest::MD5->new;
+    if ( $file !~ /[\r\n]/ && $fmgr->exists( $file ) ) {
+        open( my $fh, $file ) or return;
+        binmode $fh;
+        $ctx->addfile( $fh );
+        close $fh;
+    } else {
+        $ctx->add( $file );
+    }
+    return $ctx->hexdigest;
+}
+
+sub allow_upload_temporary {
+    my ( $ext ) = @_;
+    if ( $ext ) {
+        if ( my $asset_file_extensions = MT->config->AssetFileExtensions ) {
+            my @asset_file_extensions = split( /\s?,\s?/, $asset_file_extensions );
+            push( @asset_file_extensions, $ext );
+            MT->config( 'AssetFileExtensions', join( ',', @asset_file_extensions ) );
+        }
+        if ( my $denied_asset_file_extensions = MT->config->DeniedAssetFileExtensions ) {
+            my @denied_asset_file_extensions = split( /\s?,\s?/, $denied_asset_file_extensions );
+            @denied_asset_file_extensions = grep { $_ !~ /^\.?$ext$/ } @denied_asset_file_extensions;
+            MT->config( 'DeniedAssetFileExtensions', join( ',', @denied_asset_file_extensions ) );
+        }
+    }
+}
+
+sub session_user {
+    my $app = shift || MT->instance();
+    return unless is_application( $app );
+    if ( my $ctx = MT::Auth->fetch_credentials( { app => $app } ) ) {
+        if ( my $username = $ctx->{ username } ) {
+            my $author = MT->model( 'author' )->load( { name => $username,
+                                                        status => MT::Author::ACTIVE(),
+                                                      }
+                                                    );
+            return $app->session_user( $author, $ctx->{ session_id } );
+        }
+    }
+}
+
+{
+    my %cached;
+
+    sub get_config_from_file {
+        my ( $key ) = @_;
+        return unless $key;
+        $key = lc( $key );
+        my $cfg_file = MT->instance->{ cfg_file };
+        if ( $cached{ $cfg_file } ) {
+            return $cached{ $cfg_file }{ $key } || '';
+        }
+        local $_;
+        local $/ = "\n";
+        open my $FH, "<", $cfg_file;
+        my $line = 0;
+
+        my %hash;
+        while (<$FH>) {
+            chomp;
+            $line++;
+            next if !/\S/ || /^#/;
+            my ( $var, $val ) = $_ =~ /^\s*(\S+)\s+(.*)$/;
+            $val =~ s/\s*$// if defined($val);
+            next unless $var && defined($val);
+            $hash{ lc( $var ) } = $val;
+        }
+        close $FH;
+        $cached{ $cfg_file } = \%hash;
+        return $hash{ $key } || '';
+        1;
+    }
 }
 
 1;
