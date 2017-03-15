@@ -4,7 +4,7 @@ function smarty_block_mtsetqueryvars( $args, $content, &$ctx, &$repeat ) {
     $to_encoding = $ctx->mt->config( 'PublishCharset' );
     $to_encoding or $to_encoding = 'UTF-8';
     if (! isset( $content ) ) {
-        $ctx->stash[ '__old_vars' ] = $ctx->__stash[ 'vars' ];
+        $ctx->__stash[ '__old_vars' ] = $ctx->__stash[ 'vars' ];
         $vars = $_REQUEST;
         $request_keys = array();
         foreach ( $vars as $key => $val ) {
@@ -24,7 +24,7 @@ function smarty_block_mtsetqueryvars( $args, $content, &$ctx, &$repeat ) {
             $ctx->__stash[ 'vars' ][ $key ] = $value;
         }
     } else {
-        $ctx->__stash[ 'vars' ] = $ctx->stash[ '__old_vars' ];
+        $ctx->__stash[ 'vars' ] = $ctx->__stash[ '__old_vars' ];
         $ctx->restore( $localvars );
     }
     return $content;

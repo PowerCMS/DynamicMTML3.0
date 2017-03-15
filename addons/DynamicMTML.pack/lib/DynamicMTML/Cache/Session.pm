@@ -56,7 +56,8 @@ sub set {
         my $update_key = $class->{ prefix } . '_upldate_key_' . $updated_at;
         $session->name( $update_key );
     }
-    return $session->save or die $session->errstr;
+    my $ret = $session->save or die $session->errstr;
+    return $ret;
 }
 
 sub remove {
@@ -67,7 +68,12 @@ sub remove {
         $key = $prefix . '_' . $key;
     }
     my $session = MT->model( 'session' )->load( { id => $key, kind => 'CO' } );
-    return $session->remove or die $session->errstr;
+    if ( $session ) {
+        my $ret = $session->remove or die $session->errstr;
+        return $ret;
+    } else {
+        return;
+    }
 }
 
 sub purge {

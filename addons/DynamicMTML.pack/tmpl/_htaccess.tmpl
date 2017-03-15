@@ -19,10 +19,20 @@ DirectoryIndex <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$>
   RewriteRule ^ <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$> [L]
 </IfModule>
 <IfModule !mod_rewrite.c>
-  Order Deny,Allow
-  Deny from all
+  <IfVersion >= 2.3>
+    Require all denied
+  </IfVersion>
+  <IfVersion < 2.3>
+    Order Deny,Allow
+    Deny from all
+  </IfVersion>
 <FilesMatch (^(|[^.]+)|<$mt:DynamicSiteBootstrapper$>)$>
-  Allow from all
+  <IfVersion >= 2.3>
+    Require all granted
+  </IfVersion>
+  <IfVersion < 2.3>
+    Allow from all
+  </IfVersion>
 </FilesMatch>
   ErrorDocument 403 <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$>
   ErrorDocument 404 <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$>
@@ -87,10 +97,20 @@ DirectoryIndex <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$>
   RewriteRule ^ <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$> [L]
 </IfModule>
 <IfModule !mod_rewrite.c>
-  Order Deny,Allow
-  Deny from all
+  <IfVersion >= 2.3>
+    Require all denied
+  </IfVersion>
+  <IfVersion < 2.3>
+    Order Deny,Allow
+    Deny from all
+  </IfVersion>
 <FilesMatch (^(|[^.]+)|<$mt:DynamicSiteBootstrapper$>)$>
-  Allow from all
+  <IfVersion >= 2.3>
+    Require all granted
+  </IfVersion>
+  <IfVersion < 2.3>
+    Allow from all
+  </IfVersion>
 </FilesMatch>
   ErrorDocument 403 <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$>
 </IfModule>
@@ -103,8 +123,13 @@ DirectoryIndex <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$>
   RewriteRule ^ <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$> [L]
 </IfModule>
 <IfModule !mod_rewrite.c>
-  Order Allow,Deny
-  Deny from all
+  <IfVersion >= 2.3>
+    Require all denied
+  </IfVersion>
+  <IfVersion < 2.3>
+    Order Allow,Deny
+    Deny from all
+  </IfVersion>
   ErrorDocument 403 <$mt:BlogRelativeURL$><$mt:DynamicSiteBootstrapper$>
 </IfModule>
 </FilesMatch>

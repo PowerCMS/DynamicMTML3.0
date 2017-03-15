@@ -236,6 +236,11 @@ function smarty_block_mtsearchentries( $args, $content, &$ctx, &$repeat ) {
         }
         $_entry = new Entry;
         $entries = $_entry->Find( $where, false, false, $extra );
+        if ( isset( $args[ 'shuffle' ] ) ) {
+            if ( $args[ 'shuffle' ] ) {
+                shuffle( $entries );
+            }
+        }
         $ctx->stash( 'entries', $entries );
     }
     if ( empty( $entries ) ) {

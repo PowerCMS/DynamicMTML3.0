@@ -2,7 +2,6 @@ package DynamicMTML::Tags;
 
 use strict;
 use HTTP::Request::Common;
-use LWP::UserAgent;
 use JSON qw/decode_json/;
 no warnings 'redefine';
 use Data::Dumper;
@@ -294,6 +293,10 @@ sub _hdlr_search_entries {
                                                            \%terms5 ],
                                                            $count_args );
         }
+    }
+    if ( $args->{ shuffle } ) {
+        require List::Util;
+        @entries = List::Util::shuffle( @entries );
     }
     my $res = '';
     my $i = 0;
@@ -716,9 +719,8 @@ sub _hdlr_dynamic_site_bootstrapper {
 
 sub _hdlr_file_get_contents {
     my ( $ctx, $args, $cond ) = @_;
-    require LWP::UserAgent;
     my $url = $args->{ url };
-    my $ua = LWP::UserAgent->new;
+    my $ua = MT->new_ua;
     $ua->agent( 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)' );
     my $req = HTTP::Request->new( GET => $url );
     my $res = $ua->request( $req );
@@ -1131,7 +1133,7 @@ sub _hdlr_json2mtml {
             $req = HTTP::Request->new( $method, $api );
         }
         $req->header( $headers ) if $headers;
-        my $ua = LWP::UserAgent->new;
+        my $ua = MT->new_ua;
         my $res = $ua->request( $req );
         my $get_error;
         if ( $res->is_error ) {

@@ -1,28 +1,22 @@
 <?php
-
-/***
- * Loading exception classes
- */
 if (! isset( $mt_dir ) ) $mt_dir = dirname( dirname( dirname( dirname( __FILE__ ) ) ) ); //
 require_once($mt_dir.DIRECTORY_SEPARATOR.'php'.DIRECTORY_SEPARATOR.'lib'.DIRECTORY_SEPARATOR.'class.exception.php'); //
 
-//require_once('lib/class.exception.php');
-
-define('VERSION', '6.0');
-define('PRODUCT_VERSION', '6.0.6');
-define('DATA_API_DEFAULT_VERSION', '1');
+define('VERSION', '6.3');
+define('PRODUCT_VERSION', '6.3');
+define('DATA_API_DEFAULT_VERSION', '3');
 
 $PRODUCT_NAME = 'Movable Type';
 if($PRODUCT_NAME == '__PRODUCT' . '_NAME__')
     $PRODUCT_NAME = 'Movable Type';
 define('PRODUCT_NAME', $PRODUCT_NAME);
 
-$RELEASE_NUMBER = '6';
+$RELEASE_NUMBER = '0';
 if ( $RELEASE_NUMBER == '__RELEASE_' . 'NUMBER__' )
-    $RELEASE_NUMBER = 4;
+    $RELEASE_NUMBER = 0;
 define('RELEASE_NUMBER', $RELEASE_NUMBER);
 
-$PRODUCT_VERSION_ID = '6.0.6';
+$PRODUCT_VERSION_ID = '6.3';
 if ( $PRODUCT_VERSION_ID == '__PRODUCT_' . 'VERSION_ID__' )
     $PRODUCT_VERSION_ID = PRODUCT_VERSION;
 $VERSION_STRING;
@@ -45,8 +39,8 @@ class MT {
         'xml' => 'text/xml',
     );
     protected $blog_id;
-    //protected $db; //
-    public $db; //
+    // protected $db;
+    public    $db;
     public $config; //
     public $debugging = false; //
     protected $caching = false;
@@ -57,6 +51,7 @@ class MT {
     protected $request;
     protected $http_error;
     protected $cfg_file;
+
     protected $mt_dir; //
     protected $php_dir; //
     protected $app; //
@@ -74,19 +69,7 @@ class MT {
      *
      * $mt = MT::get_instance();
      */
-/*
     private function __construct($blog_id = null, $cfg_file = null) {
-        error_reporting(E_ALL ^ E_NOTICE ^ E_WARNING);
-        try {
-            $this->id = md5(uniqid('MT',true));
-            $this->init($blog_id, $cfg_file);
-        } catch (Exception $e ) {
-            throw new MTInitException( $e, $this->debugging );
-        }
-    }
-*/
-
-    function __construct($blog_id = null, $cfg_file = null) { //
         global $mt_dir; //
         global $app; //
         $this->app = $app; //
@@ -143,7 +126,25 @@ class MT {
         $this->init_addons();
         $this->configure_from_db();
 
-        $lang = substr(strtolower($this->config('DefaultLanguage')), 0, 2);
+        if (isset($blog_id)) {
+            $db =& $this->db();
+            $blog = $db->fetch_blog($this->blog_id);
+
+            if ($blog) {
+                $ctx =& $this->context();
+                $ctx->stash('blog', $blog);
+            }
+
+            $lang = substr(strtolower(
+                $blog && $blog->blog_language
+                    ? $blog->blog_language
+                    : $mt->config('DefaultLanguage')
+                ), 0, 2);
+        }
+        else {
+            $lang = substr(strtolower($this->config('DefaultLanguage')), 0, 2);
+        }
+
         if (!@include_once("l10n_$lang.php"))
             include_once("l10n_en.php");
 
@@ -155,10 +156,10 @@ class MT {
     }
 
     function init_addons() {
-        // $mtdir = dirname(dirname(__FILE__)); //
+        // $mtdir = dirname(dirname(__FILE__));
         $mtdir = $this->mt_dir; //
         $path = $mtdir . DIRECTORY_SEPARATOR . "addons";
-        if (is_dir($path)) { //
+        if (is_dir($path)) {
             $ctx =& $this->context();
             // Custom Sort //
             $plugin_dirs = array();
@@ -209,18 +210,6 @@ class MT {
             foreach ( $plugin_dirs as $plugin_dir ) {
                 $ctx->add_plugin_dir($plugin_dir);
             }
-            /// Custom Sort
-            // if ($dh = @opendir($path)) {
-            //      while (($file = readdir($dh)) !== false) {
-            //          if ($file == "." || $file == "..")
-            //              continue;
-            //          $plugin_dir = $path . DIRECTORY_SEPARATOR . $file
-            //              . DIRECTORY_SEPARATOR . 'php';
-            //          if (is_dir($plugin_dir))
-            //              $ctx->add_plugin_dir($plugin_dir);
-            //      }
-            //      closedir($dh);
-            // }
         }
 
         $plugin_dir = $this->config('PHPDir') . DIRECTORY_SEPARATOR
@@ -246,6 +235,13 @@ class MT {
                 } elseif (preg_match('/^init\.(.+?)\.php$/', $file, $matches)) {
                     // load 'init' plugin file
                     require_once($file);
+                } else {
+                    // override plugin function
+                    if(preg_match('/^block\.(mt.+?)\.php$/', $file, $matches)) {
+                        $ctx->register_tag_handler($matches[1],'','block');
+                    } elseif(preg_match('/^function\.(mt.+?)\.php$/', $file, $matches)){
+                        $ctx->register_tag_handler($matches[1],'','function');
+                    }
                 }
             }
             closedir($dh);
@@ -306,9 +302,6 @@ class MT {
      */
     function configure($file = null) {
         if (isset($this->config)) return $config;
-
-        $this->cfg_file = $file;
-
         $this->cfg_file = $file;
         $app = $this->app; //
         if ( $app ) { //
@@ -515,7 +508,7 @@ class MT {
         isset($cfg['usersessioncookietimeout']) or
             $cfg['usersessioncookietimeout'] = 60*60*4;
         isset($cfg['commenterregistration']) or
-            $cfg['commenterregistration'] = array('allow' => 1 );
+            $cfg['commenterregistration'] = array('Allow' => 1 );
         isset($cfg['userpasswordminlength']) or
             $cfg['userpasswordminlength'] = 8;
         isset($cfg['bulkloadmetaobjectslimit']) or
@@ -542,16 +535,15 @@ class MT {
             DIRECTORY_SEPARATOR . 'cache');
 
         $ctx =& $this->context();
-        $ctx->template_dir = $this->config('PHPTemplateDir');
-        $ctx->compile_dir = $ctx->template_dir . '_c';
-        $ctx->cache_dir = $this->config('PHPCacheDir');
+        $ctx->setTemplateDir($this->config('PHPTemplateDir'));
+        $ctx->setCompileDir($this->config('PHPTemplateDir') . '_c');
+        $ctx->setCacheDir($this->config('PHPCacheDir'));
     }
 
     /***
      * Mainline handler function.
      */
     function view($blog_id = null) {
-
         set_error_handler(array(&$this, 'error_handler'));
 
         require_once("MTUtil.php");
@@ -661,7 +653,6 @@ class MT {
         $vars =& $ctx->__stash['vars'];
         $vars['page_columns'] = $columns;
         $vars['page_layout'] = $page_layout;
-
         if (isset($tmpl->template_identifier))
             $vars[$tmpl->template_identifier] = 1;
 
@@ -687,7 +678,7 @@ class MT {
 
         $cache_id = $blog_id.';'.$fi_path;
         if (!$ctx->is_cached('mt:'.$tpl_id, $cache_id)) {
-            if (isset($at) && ($at != 'Category')) { //
+            if (isset($at) && ($at != 'Category')) {
                 require_once("archive_lib.php");
                 try {
                     $archiver = ArchiverFactory::get_archiver($at);
@@ -752,7 +743,7 @@ class MT {
 
         $this->set_canonical_url($ctx, $blog, $data);
 
-        $output = $ctx->fetch('mt:'.$tpl_id, $cache_id);
+        $output = $this->fetch('mt:'.$tpl_id, $cache_id);
 
         $this->http_error = 200;
         header("HTTP/1.1 200 OK");
@@ -860,7 +851,6 @@ class MT {
 
     function display($tpl, $cid = null) {
         $ctx =& $this->context();
-        $this->init_plugins();
         $blog =& $ctx->stash('blog');
         if (!$blog) {
             $db =& $this->db();
@@ -871,6 +861,7 @@ class MT {
             $ctx->stash('local_blog_id', $this->blog_id);
             $this->configure_paths($blog->site_path());
         }
+
         return $ctx->display($tpl, $cid);
     }
 
@@ -913,8 +904,8 @@ class MT {
     function error_handler($errno, $errstr, $errfile, $errline) {
         if ($errno & (E_ALL ^ E_NOTICE ^ E_WARNING)) {
             if ( !empty( $this->db ) ) {
-                $errstr = encode_html_entities($errstr, ENT_COMPAT);
-                $errfile = encode_html_entities($errfile, ENT_COMPAT);
+                $errstr = encode_html_entities($errstr, ENT_QUOTES);
+                $errfile = encode_html_entities($errfile, ENT_QUOTES);
                 $mtphpdir = $this->config('PHPDir');
                 $ctx =& $this->context();
                 $ctx->stash('blog_id', $this->blog_id);
@@ -938,7 +929,7 @@ class MT {
                 $ctx->stash('http_error', $http_error);
                 $ctx->stash('error_file', $errfile);
                 $ctx->stash('error_line', $errline);
-                $ctx->template_dir = $mtphpdir . DIRECTORY_SEPARATOR . 'tmpl';
+                $ctx->setTemplateDir($mtphpdir . DIRECTORY_SEPARATOR . 'tmpl');
                 $ctx->caching = 0;
                 $ctx->stash('StaticWebPath', $this->config('StaticWebPath'));
                 $ctx->stash('PublishCharset', $this->config('PublishCharset'));
@@ -981,10 +972,10 @@ class MT {
         $ctx->mt =& $this;
         $mtphpdir = $this->config('PHPDir');
         $mtlibdir = $this->config('PHPLibDir');
-        $ctx->compile_check = 1;
+        $ctx->setCompileCheck(1);
         $ctx->caching = false;
-        $ctx->plugins_dir[] = $mtlibdir;
-        $ctx->plugins_dir[] = $mtphpdir . DIRECTORY_SEPARATOR . "plugins";
+        $ctx->add_plugin_dir($mtlibdir);
+        $ctx->add_plugin_dir($mtphpdir . DIRECTORY_SEPARATOR . "plugins");
         if ($this->debugging) {
             $ctx->debugging_ctrl = 'URL';
             $ctx->debug_tpl = $mtphpdir . DIRECTORY_SEPARATOR .
